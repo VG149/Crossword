@@ -1,4 +1,4 @@
-package com.FATEC.palavrascruzadas;
+package com.seunome.palavrascruzadas;
 
 import com.getcapacitor.BridgeActivity;
 

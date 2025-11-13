@@ -5,7 +5,6 @@ import {
   IonToolbar,
   IonTitle,
   IonContent,
-  IonFooter,
   IonButton,
   IonIcon,
   IonText,
@@ -13,7 +12,7 @@ import {
 } from "@ionic/react";
 import { refresh, swapHorizontal, home } from "ionicons/icons";
 import { useLocation, useHistory } from "react-router-dom";
-import { generatePuzzle } from "../utils/generatePuzzle"; 
+import { generatePuzzle } from "../utils/generatePuzzle";
 import "./crossword.css";
 
 type Cell = {
@@ -26,28 +25,15 @@ type Cell = {
 };
 
 type Direction = "across" | "down";
-
 type Coor = { r: number; c: number };
 
-function inBounds(p: any, r: number, c: number) {
-  return r >= 0 && r < p.rows && c >= 0 && c < p.cols;
-}
-
-function isBlock(p: any, r: number, c: number) {
-  return p.grid[r][c] === ".";
-}
-
 function buildCells(p: any): Cell[][] {
-  const cells: Cell[][] = [];
-  for (let r = 0; r < p.rows; r++) {
-    const row: Cell[] = [];
-    for (let c = 0; c < p.cols; c++) {
+  return Array.from({ length: p.rows }, (_, r) =>
+    Array.from({ length: p.cols }, (_, c) => {
       const ch = p.grid[r][c];
-      row.push({ r, c, isBlock: ch === ".", solution: ch === "." ? undefined : ch });
-    }
-    cells.push(row);
-  }
-  return cells;
+      return { r, c, isBlock: ch === ".", solution: ch === "." ? undefined : ch };
+    })
+  );
 }
 
 export default function CrosswordPage() {
@@ -58,21 +44,41 @@ export default function CrosswordPage() {
 
   const [puzzle, setPuzzle] = useState(() => generatePuzzle(mode));
   const [cells, setCells] = useState<Cell[][]>(() => buildCells(puzzle));
-  const [active, setActive] = useState<Coor>({ r: 0, c: 0 });
   const [dir, setDir] = useState<Direction>("across");
   const [present] = useIonToast();
   const inputRefs = useRef<(HTMLInputElement | null)[][]>(
     Array.from({ length: puzzle.rows }, () => Array(puzzle.cols).fill(null))
   );
+  const [cellSize, setCellSize] = useState<number>(40);
 
-  // 🔦 Dark mode automático
+  // Ajusta modo escuro
   useEffect(() => {
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)");
-    document.body.classList.toggle("dark", prefersDark.matches);
-    prefersDark.addEventListener("change", (e) =>
-      document.body.classList.toggle("dark", e.matches)
-    );
+    const applyDark = () => document.body.classList.toggle("dark", prefersDark.matches);
+    applyDark();
+    prefersDark.addEventListener("change", applyDark);
+    return () => prefersDark.removeEventListener("change", applyDark);
   }, []);
+
+  // Recalcula tamanho da célula para caber na tela
+  useEffect(() => {
+    function recalc() {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const reserved = 200; // espaço para header + botões + margens
+      const availableW = vw - 32;
+      const availableH = vh - reserved;
+
+      const sizeW = Math.floor(availableW / puzzle.cols);
+      const sizeH = Math.floor(availableH / puzzle.rows);
+      const size = Math.max(20, Math.min(48, Math.min(sizeW, sizeH)));
+      setCellSize(size);
+    }
+
+    recalc();
+    window.addEventListener("resize", recalc);
+    return () => window.removeEventListener("resize", recalc);
+  }, [puzzle]);
 
   // Regera puzzle
   const handleRestart = () => {
@@ -81,11 +87,12 @@ export default function CrosswordPage() {
     setCells(buildCells(newPuzzle));
   };
 
-  function handleInput(r: number, c: number, e: CustomEvent) {
-    const target = e.target as HTMLInputElement;
-    const raw = (target?.value || "").toString();
-    const ch = raw.slice(-1).toUpperCase().replace(/[^A-Z]/, "");
+  // Alternar direção
+  const toggleDir = () => setDir((d) => (d === "across" ? "down" : "across"));
 
+  // Entrada do usuário
+  const handleInput = (r: number, c: number, e: any) => {
+    const ch = e.target.value.toUpperCase().replace(/[^A-ZÀ-Ý]/, "");
     if (!ch) return;
 
     setCells((prev) => {
@@ -98,27 +105,30 @@ export default function CrosswordPage() {
 
       const input = inputRefs.current[r][c];
       if (correct) {
-  cell.correct = true;
-  input!.value = ch; // garante que a letra apareça no input
-  input!.style.backgroundColor = "lightgreen";
-  input!.style.color = "black"; // garante visibilidade do texto
-  input!.readOnly = true;
-  present({ message: "✅ Correto!", duration: 800, position: "top" });
-} else {
-        input!.style.backgroundColor = "lightcoral";
+        cell.correct = true;
+        if (input) {
+          input.style.backgroundColor = "lightgreen";
+          input.readOnly = true;
+        }
+        present({ message: "✅ Correto!", duration: 800, position: "top" });
+      } else {
+        if (input) input.style.backgroundColor = "lightcoral";
         present({ message: "❌ Errado!", duration: 600, position: "top" });
         setTimeout(() => {
-          input!.style.backgroundColor = "";
-          input!.value = "";
+          if (input) {
+            input.style.backgroundColor = "";
+            input.value = "";
+          }
           cell.value = "";
         }, 800);
       }
 
       return next;
     });
-  }
+  };
 
-  function handleKeyDown(r: number, c: number, e: React.KeyboardEvent<HTMLInputElement>) {
+  // Backspace
+  const handleKeyDown = (r: number, c: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Backspace") {
       setCells((prev) => {
         const next = prev.map((row) => row.slice());
@@ -126,12 +136,13 @@ export default function CrosswordPage() {
         return next;
       });
     }
-  }
+  };
 
-  // 🔁 Alterna direção
-  function toggleDir() {
-    setDir((d) => (d === "across" ? "down" : "across"));
-  }
+  // Estilo dinâmico da grade
+  const gridStyle: React.CSSProperties = {
+    gridTemplateColumns: `repeat(${puzzle.cols}, ${cellSize}px)`,
+    gridAutoRows: `${cellSize}px`,
+  };
 
   return (
     <IonPage>
@@ -141,72 +152,79 @@ export default function CrosswordPage() {
         </IonToolbar>
       </IonHeader>
 
-      <IonContent className="ion-padding">
-        <IonText color="medium">
-          <h2 style={{ textAlign: "center" }}>Modo: {mode === "hard" ? "Difícil" : "Normal"}</h2>
-        </IonText>
+      {/* Controles fixos */}
+      <div className="fixed-buttons">
+        <IonButton onClick={toggleDir}>
+          <IonIcon icon={swapHorizontal} slot="start" />
+          {dir === "across" ? "Horizontal" : "Vertical"}
+        </IonButton>
+        <IonButton color="success" onClick={handleRestart}>
+          <IonIcon icon={refresh} slot="start" />
+          Jogar novamente
+        </IonButton>
+        <IonButton color="medium" onClick={() => history.push("/")}>
+          <IonIcon icon={home} slot="start" />
+          Menu
+        </IonButton>
+      </div>
 
-        <div className="crossword-container">
-          <div
-  className="crossword-grid"
-  style={{ gridTemplateColumns: `repeat(${puzzle.cols}, 40px)` } as React.CSSProperties}
->
-            {cells.map((row, r) =>
-              row.map((cell, c) => (
-                <div
-                  key={`${r}-${c}`}
-                  className={`cell ${cell.isBlock ? "block" : ""}`}
-                  onClick={() => !cell.isBlock && setActive({ r, c })}
-                >
-                  {!cell.isBlock && (
-                    <input
-                      ref={(el) => {
-                        if (!inputRefs.current[r]) inputRefs.current[r] = [];
-                        inputRefs.current[r][c] = el;
-                      }}
-                      value={cell.value || ""}
-                      onInput={(e) => handleInput(r, c, e as unknown as CustomEvent)}
-                      onKeyDown={(e) => handleKeyDown(r, c, e)}
-                      readOnly={cell.correct}
-                      className={cell.correct ? "correct" : ""}
-                    />
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-            <IonText color="dark">
-            <h3>Dicas:</h3>
-            <ul>
-              {Object.entries(puzzle.clues.across).map(([num, clue]) => (
-                <li key={num}>
-                  <strong>{num}.</strong> {clue}
-                </li>
-              ))}
-            </ul>
+      <IonContent fullscreen>
+        <div className="scroll-area">
+          <IonText color="medium">
+            <h2 style={{ textAlign: "center", marginTop: "0.5rem" }}>
+              Modo: {mode === "hard" ? "Difícil" : "Normal"}
+            </h2>
           </IonText>
 
+          {/* Tabuleiro */}
+          <div className="crossword-scroll">
+            <div className="crossword-grid" style={gridStyle}>
+              {cells.map((row, r) =>
+                row.map((cell, c) => (
+                  <div
+                    key={`${r}-${c}`}
+                    className={`cell ${cell.isBlock ? "block" : ""}`}
+                    style={{
+                      width: `${cellSize}px`,
+                      height: `${cellSize}px`,
+                    }}
+                  >
+                    {!cell.isBlock && (
+                      <input
+                        ref={(el) => {
+                          if (!inputRefs.current[r]) inputRefs.current[r] = [];
+                          inputRefs.current[r][c] = el;
+                        }}
+                        value={cell.value || ""}
+                        onInput={(e) => handleInput(r, c, e)}
+                        onKeyDown={(e) => handleKeyDown(r, c, e)}
+                        readOnly={cell.correct}
+                        className={cell.correct ? "correct" : ""}
+                        inputMode="text"
+                        autoComplete="off"
+                      />
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Dicas */}
+          <div className="hints-container">
+            <IonText color="dark">
+              <h3>Dicas:</h3>
+              <ul>
+                {Object.entries(puzzle.clues.across || {}).map(([num, clue]) => (
+                  <li key={num}>
+                    <strong>{num}.</strong> {clue}
+                  </li>
+                ))}
+              </ul>
+            </IonText>
+          </div>
+        </div>
       </IonContent>
-
-      <IonFooter>
-        <IonToolbar>
-          <IonButton onClick={toggleDir}>
-            <IonIcon icon={swapHorizontal} slot="start" />
-            {dir === "across" ? "Horizontal" : "Vertical"}
-          </IonButton>
-
-          <IonButton color="success" onClick={handleRestart}>
-            <IonIcon icon={refresh} slot="start" />
-            Jogar novamente
-          </IonButton>
-
-          <IonButton color="medium" onClick={() => history.push("/")}>
-            <IonIcon icon={home} slot="start" />
-            Menu
-          </IonButton>
-        </IonToolbar>
-      </IonFooter>
     </IonPage>
   );
 }

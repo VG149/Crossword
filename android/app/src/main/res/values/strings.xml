@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Crossword</string>
-    <string name="title_activity_main">Crossword</string>
-    <string name="package_name">com.FATEC.palavrascruzadas</string>
-    <string name="custom_url_scheme">com.FATEC.palavrascruzadas</string>
+    <string name="app_name">Palavras Cruzadas</string>
+    <string name="title_activity_main">Palavras Cruzadas</string>
+    <string name="package_name">com.seunome.palavrascruzadas</string>
+    <string name="custom_url_scheme">com.seunome.palavrascruzadas</string>
 </resources>
